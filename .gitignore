@@ -1,0 +1,11 @@
+﻿*.MOV
+*.psd
+*.MOV
+vc10/Debug/
+vc10/Debug2/
+*.ipch
+vc10/ocvCapture.exe
+*.opensdf
+*.suo
+vc10/Release/
+vc10/Release2/
