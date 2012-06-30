@@ -15,6 +15,7 @@
 #include <iostream>
 #include <fstream>
 #include "ProjectorControl.hpp"
+#include "BBXMLApp.hpp"
 
 using namespace std;
 using namespace ci;
@@ -102,6 +103,8 @@ public:
 
 	int									mLiveType; // 0 - black ink 1 - white ink 2 - feed ink 3 - overwrite processed grey 4 - overwrite processed spot
 	bool								mDrawLines;
+
+	BBXML								*mXML;
 };
 
 void ocvCaptureApp::setup()
@@ -110,6 +113,9 @@ void ocvCaptureApp::setup()
 
 		mComm = new SerialComm();
 		mComm->ProjectorOn(1);
+
+		mXML = new BBXML();
+
 		//mMaskSrf = loadImage("../resources/mask_cross.png");
 		//bool has_alpha = mMaskSrf.hasAlpha();
 
@@ -122,7 +128,7 @@ void ocvCaptureApp::setup()
 		gH = 1080;
 		gW = 1920;
 
-		mLiveType = 4;
+		mLiveType = 1;
 		mDrawLines = false;
 
 		mV0 = Vec2f(0, 0);
@@ -172,10 +178,17 @@ void ocvCaptureApp::setup()
 		mpaths.push_back("C:/white_kids_section2.mov");
 		mpaths.push_back("C:/white_kids_section3.mov");
 		mpaths.push_back("C:/white_teens_section.mov");*/
-		mpaths.push_back("C:/Apr19_6_4C_B.avi");
+		
+		/*mpaths.push_back("C:/Apr19_6_4C_B.avi");
 		mpaths.push_back("C:/Apr19_6_4C_G.avi");
 		mpaths.push_back("C:/Apr19_6_4C_S.avi");
-		mpaths.push_back("C:/Apr19_6_4C_W.avi");
+		mpaths.push_back("C:/Apr19_6_4C_W.avi");*/
+
+		for (int i = 0; i<mXML->mClips.size(); i++) {
+			mpaths.push_back(mXML->mClips[i]->path);
+		}
+
+
 		mMovies = mpaths;
 
 		for (int i=0;i<(int)mMovies.size();i++) {
@@ -358,7 +371,10 @@ void ocvCaptureApp::update()
 				} else if (mLiveType == 3) {
 					to_display = coladd;
 				} else if (mLiveType == 4) {
-					cv::Mat inv, bigcolorcap;
+					cv::Mat inv, bigcolorcap, biggreycap;
+					cv::resize(capmat,biggreycap,cv::Size(w,h));
+					biggreycap *= 0.4; // too bright
+					cv::add(biggreycap,coladd,coladd);
 					cv::subtract(cv::Scalar(255),coladd,inv);
 					cv::cvtColor(inv, inv, CV_GRAY2BGR);
 					cv::resize(mColorCap,bigcolorcap,cv::Size(w,h));
@@ -633,7 +649,7 @@ cv::Mat ocvCaptureApp::threshlines(cv::Mat thresh, cv::Mat dest, cv::Scalar col,
 		fill = cv::Mat(h,w,CV_8UC1,cvScalar(30) );
 		lines = cv::Mat(h,w,CV_8UC1,cvScalar(0) );
 	} else if (mLiveType == 4) {
-		fill = cv::Mat(h,w,CV_8UC1,cvScalar(0) );
+		//fill = cv::Mat(h,w,CV_8UC1,cvScalar(0) );
 		lines = cv::Mat(h,w,CV_8UC1,cvScalar(0) );
 	}
 
@@ -657,9 +673,11 @@ cv::Mat ocvCaptureApp::threshlines(cv::Mat thresh, cv::Mat dest, cv::Scalar col,
 				} 
 			} else {
 				cv::polylines(lines,pts,true,cv::Scalar(255),1);
-				vector <vector <cv::Point>> poly;
-				poly.push_back(pts);
-				cv::fillPoly(fill,poly,cv::Scalar(60));
+				if (mLiveType == 3) {
+					vector <vector <cv::Point>> poly;
+					poly.push_back(pts);
+					cv::fillPoly(fill,poly,cv::Scalar(80));
+				}
 			}
 			//cv::fillConvexPoly(dest,pts,cv::Scalar(120));
 		}
@@ -670,10 +688,7 @@ cv::Mat ocvCaptureApp::threshlines(cv::Mat thresh, cv::Mat dest, cv::Scalar col,
 		cv::subtract(fill,lines,fill);
 		return fill;
 	} else if (mLiveType == 4) {
-		cv::blur(fill,fill,cv::Size(5,5));
-		cv::add(fill,lines,fill);
-		cv::threshold(fill,fill,255,255,CV_THRESH_TRUNC);
-		return fill;
+		return lines;
 	}
 	return dest;
 }

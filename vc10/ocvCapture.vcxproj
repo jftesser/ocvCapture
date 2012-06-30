@@ -206,6 +206,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\Resources.h" />
+    <ClInclude Include="..\src\BBXMLApp.hpp" />
     <ClInclude Include="..\src\flyCap.hpp" />
     <ClInclude Include="..\src\ProjectorControl.hpp" />
   </ItemGroup>
