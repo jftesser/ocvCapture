@@ -139,7 +139,7 @@ int flyCap::stop() {
     return 0;
 }
 
-cv::Mat flyCap::grab() {
+cv::Mat flyCap::grab(bool color) {
 	cv::Mat m;
 	if (mCapturing) {
 		Error error;
@@ -166,8 +166,10 @@ cv::Mat flyCap::grab() {
 		FlyCapture2::Image convertedImage;
 
 		// Convert the raw image
-		//error = rawImage.Convert( FlyCapture2::PIXEL_FORMAT_RGB8, &convertedImage );
-		error = rawImage.Convert( FlyCapture2::PIXEL_FORMAT_MONO8, &convertedImage );
+		if (color)
+			error = rawImage.Convert( FlyCapture2::PIXEL_FORMAT_RGB8, &convertedImage );
+		else
+			error = rawImage.Convert( FlyCapture2::PIXEL_FORMAT_MONO8, &convertedImage );
 		if (error != FlyCapture2::PGRERROR_OK)
 		{
 			error.PrintErrorTrace();
@@ -175,12 +177,16 @@ cv::Mat flyCap::grab() {
 		}
 
 		//Copy the image into the IplImage of OpenCV
-		//cvImage = cvCreateImage(cvSize(rawImage.GetCols(), rawImage.GetRows()), IPL_DEPTH_8U, 3);
-		cvImage = cvCreateImage(cvSize(rawImage.GetCols(), rawImage.GetRows()), IPL_DEPTH_8U, 1);
+		if (color)
+			cvImage = cvCreateImage(cvSize(rawImage.GetCols(), rawImage.GetRows()), IPL_DEPTH_8U, 3);
+		else
+			cvImage = cvCreateImage(cvSize(rawImage.GetCols(), rawImage.GetRows()), IPL_DEPTH_8U, 1);
 		memcpy(cvImage->imageData, convertedImage.GetData(), convertedImage.GetDataSize());
-		// rgb -> bgr
+		
 		m = cvImage;
-		//cv::cvtColor(m,m,CV_RGB2BGR);
+		// rgb -> bgr
+		if (color)
+			cv::cvtColor(m,m,CV_RGB2BGR);
 
 		return m;
 	} else {

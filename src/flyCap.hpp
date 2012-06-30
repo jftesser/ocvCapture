@@ -22,7 +22,7 @@ public:
 	int start();
 	int stop();
 
-	cv::Mat grab();
+	cv::Mat grab(bool color = false);
 	
 
 	Camera mCam;

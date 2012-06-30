@@ -72,6 +72,7 @@ public:
 	bool								mPlayingMov;
 	cv::Mat								mCapMat;
 	cv::Mat								mLastCapMat;
+	cv::Mat								mColorCap;
 	bool								mHaveCapMat;
 	bool								mHaveBoth;
 	bool								mCapturing;
@@ -91,6 +92,7 @@ public:
 
 	int									mH, mW;
 	int									gH, gW;
+	int									cH, cW;
 	float								mCapSc;
 
 	Vec2f								mV0, mV1, mV2, mV3;
@@ -98,7 +100,7 @@ public:
 
 	SerialComm							*mComm;
 
-	int									mLiveType; // 0 - black ink 1 - white ink 2 - feed ink
+	int									mLiveType; // 0 - black ink 1 - white ink 2 - feed ink 3 - overwrite processed grey 4 - overwrite processed spot
 	bool								mDrawLines;
 };
 
@@ -113,12 +115,14 @@ void ocvCaptureApp::setup()
 
 		//mMaskSrf.setPremultiplied(true);
 		//bool premultiplied = mMaskSrf.isPremultiplied ();
-		mH = 1080*0.3;
-		mW = 1920*0.3;
+		mH = 1080*1.0;
+		mW = 1920*1.0;
+		cH = 1080*0.75;
+		cW = 1920*0.75;
 		gH = 1080;
 		gW = 1920;
 
-		mLiveType = 2;
+		mLiveType = 4;
 		mDrawLines = false;
 
 		mV0 = Vec2f(0, 0);
@@ -138,6 +142,8 @@ void ocvCaptureApp::setup()
 
 		mAccAdd = cv::Mat(mW,mH,CV_8UC1,cvScalar(0));
 		mAccCap = cv::Mat(mW*mCapSc,mH*mCapSc,CV_8UC1,cvScalar(0));
+
+		mColorCap = cv::Mat(mW*mCapSc,mH*mCapSc,CV_8UC3,cvScalar(0,0,0));
 
 		mMaskTexture = loadImage("../resources/mask_nocross.png"); //gl::Texture( mMaskSrf );
 
@@ -191,7 +197,7 @@ void ocvCaptureApp::setup()
 }
 void ocvCaptureApp::prepareSettings( Settings *settings ){
 	settings->setWindowSize( 1920, 1080 );
-	settings->setFullScreen(true);
+	//settings->setFullScreen(true);
 	settings->setFrameRate( 30.0f );
 }
 
@@ -244,7 +250,7 @@ void ocvCaptureApp::saveOS() {
 }
 
 cv::Mat ocvCaptureApp::process_mov(cv::Mat m) {
-	cv::resize(m,m,cvSize(mH,mW));//1920,1080));
+	cv::resize(m,m,cvSize(mW,mH));//1920,1080));
 	return m;
 }
 
@@ -261,6 +267,7 @@ cv::Mat ocvCaptureApp::process_cap(cv::Mat m) {
 	} else {
 		mHaveBoth = false;
 	}
+
 	return mAccCap;
 }
 
@@ -268,11 +275,16 @@ void ocvCaptureApp::update()
 {
 	if (mCapturing && mCap) {
 		mLastCapMat = mCapMat;
-		mCapMat = mCap->grab();
+		if (mLiveType == 4) {
+			mCapMat = mCap->grab();
+			mColorCap = mCap->grab(true);
+			//cv::cvtColor(mColorCap,mCapMat,CV_BGR2GRAY); doesn't work, not sure why
+		} else
+			mCapMat = mCap->grab();
 		mHaveCapMat = true;
 	}
 
-	if (mPlayingMov && mThisMovie ) {
+	if (mPlayingMov && mThisMovie && mLiveType < 3) {
 		IplImage *img = cvQueryFrame(mThisMovie);
 		if (img) {
 			mMovieMat = img;
@@ -281,21 +293,32 @@ void ocvCaptureApp::update()
 		}
 	}
 
-
+	int w, h;
+	if ( mLiveType < 3) {
+		w = mW;
+		h = mH;
+	} else {
+		w = cW;
+		h = cH;
+	}
 
 	if (mHaveMovieMat || mHaveCapMat) {
 		// have something to process and display
 		cv::Mat to_display;
 
-		if (mHaveMovieMat && mPlayingMov) {
+		if (mHaveMovieMat && mPlayingMov && mLiveType < 3) {
 			to_display = process_mov(mMovieMat);
 		} else {
-			to_display = cv::Mat(mW,mH,CV_8UC3,cvScalar(150,150,150) );//CV_32FC3,cvScalar(0.5,0.5,0.5));
+			
+			to_display = cv::Mat(h,w,CV_8UC3,cvScalar(150,150,150) );//CV_32FC3,cvScalar(0.5,0.5,0.5));
+			
 		}
 
 		//cv::threshold(to_display,bright,200,255,cv::THRESH_TOZERO); //THRESH_TOZERO
 		//cv::add(to_display,bright,to_display);
-		mAdd = cv::Mat(mW,mH,CV_8UC1,cvScalar(0));
+		mAdd = cv::Mat(h,w,CV_8UC1,cvScalar(0));
+
+		
 
 		if (mHaveCapMat && mCapturing) {
 			cv::Mat capmat = process_cap(mCapMat);
@@ -304,14 +327,21 @@ void ocvCaptureApp::update()
 				cv::Mat capthresh, capthreshbig; // capgrey,
 				//cv::cvtColor(capmat, capgrey, CV_BGR2GRAY); // cap is now greyscale
 				cv::threshold(capmat,capthresh,100,100,cv::THRESH_BINARY);
-				threshlines(capthresh,mAdd,cvScalar(255,255,255),1);
+				mAdd = threshlines(capthresh,mAdd,cvScalar(255,255,255),1);
+				if (mAccAdd.cols != w || mAccAdd.rows != h) {
+					cv::resize(mAccAdd,mAccAdd,cv::Size(w,h));
+				}
+				cv::Mat coladd;
 				mAccAdd *= 0.75; // decay on accumulation
 				cv::add(mAdd,mAccAdd,mAccAdd);
 				cv::threshold(mAccAdd,mAccAdd,255,255,CV_THRESH_TRUNC);
-				if (mDrawLines == false)
-					cv::blur(mAccAdd,mAccAdd,cvSize(7,7));
-				cv::Mat coladd;
-				cv::cvtColor(mAccAdd,coladd,CV_GRAY2BGR);
+				if (mLiveType < 3) {
+					if (mDrawLines == false)
+						cv::blur(mAccAdd,mAccAdd,cvSize(7,7));
+					cv::cvtColor(mAccAdd,coladd,CV_GRAY2BGR);
+				} else {
+					coladd = mAccAdd;
+				}
 
 				if (mLiveType == 0) {
 					cv::subtract(to_display,coladd,to_display);
@@ -321,10 +351,18 @@ void ocvCaptureApp::update()
 					cv::subtract(to_display,coladd,to_display);
 					cv::Mat invadd, bigcap;
 					cv::absdiff(mAccAdd,cv::Scalar(255),invadd);
-					cv::resize(mCapMat,bigcap,cv::Size(mH,mW));
+					cv::resize(mCapMat,bigcap,cv::Size(w,h));
 					cv::subtract(bigcap,invadd,bigcap);
 					cv::cvtColor(bigcap,bigcap,CV_GRAY2BGR);
 					cv::add(to_display,bigcap,to_display);
+				} else if (mLiveType == 3) {
+					to_display = coladd;
+				} else if (mLiveType == 4) {
+					cv::Mat inv, bigcolorcap;
+					cv::subtract(cv::Scalar(255),coladd,inv);
+					cv::cvtColor(inv, inv, CV_GRAY2BGR);
+					cv::resize(mColorCap,bigcolorcap,cv::Size(w,h));
+					cv::subtract(bigcolorcap,inv,to_display);
 				}
 				/*
 				cv::Mat bigacc;
@@ -446,8 +484,12 @@ void ocvCaptureApp::keyDown(KeyEvent event) {
 	} else if( event.getChar() == '3' ){
 		mLiveType = 2;
 	} else if( event.getChar() == '4' ){
-		mDrawLines = true;
+		mLiveType = 3;
 	} else if( event.getChar() == '5' ){
+		mLiveType = 4;
+	} else if( event.getChar() == 'e' ){
+		mDrawLines = true;
+	} else if( event.getChar() == 'r' ){
 		mDrawLines = false;
 	} else if( event.getChar() == 'q' ){
 		mPlayingMov = true;
@@ -582,6 +624,19 @@ cv::Mat ocvCaptureApp::threshlines(cv::Mat thresh, cv::Mat dest, cv::Scalar col,
 	vector <vector <cv::Point>> contours;
 	cv::findContours(thresh,contours,CV_RETR_EXTERNAL,CV_CHAIN_APPROX_TC89_KCOS);
 
+	cv::Mat fill, lines;
+	int w, h;
+	w = dest.cols;
+	h = dest.rows;
+
+	if (mLiveType == 3) {
+		fill = cv::Mat(h,w,CV_8UC1,cvScalar(30) );
+		lines = cv::Mat(h,w,CV_8UC1,cvScalar(0) );
+	} else if (mLiveType == 4) {
+		fill = cv::Mat(h,w,CV_8UC1,cvScalar(0) );
+		lines = cv::Mat(h,w,CV_8UC1,cvScalar(0) );
+	}
+
 	double ysc = dest.rows/(1.0*thresh.rows);
 	double xsc = dest.cols/(1.0*thresh.cols);
 	for (int i=0; i<(int)contours.size(); i++) {
@@ -591,20 +646,35 @@ cv::Mat ocvCaptureApp::threshlines(cv::Mat thresh, cv::Mat dest, cv::Scalar col,
 				pts[j].x *= xsc;
 				pts[j].y *= ysc;
 			}
-			if (mDrawLines) {
-				cv::polylines(dest,pts,true,cv::Scalar(60),1);
+
+			if (mLiveType < 3) {
+				if (mDrawLines) {
+					cv::polylines(dest,pts,true,cv::Scalar(60),1);
+				} else {
+					vector <vector <cv::Point>> poly;
+					poly.push_back(pts);
+					cv::fillPoly(dest,poly,cv::Scalar(60));
+				} 
 			} else {
+				cv::polylines(lines,pts,true,cv::Scalar(255),1);
 				vector <vector <cv::Point>> poly;
 				poly.push_back(pts);
-				cv::fillPoly(dest,poly,cv::Scalar(60));
+				cv::fillPoly(fill,poly,cv::Scalar(60));
 			}
-
-			
-
 			//cv::fillConvexPoly(dest,pts,cv::Scalar(120));
 		}
 	}
 	
+	if (mLiveType == 3) {
+		cv::blur(fill,fill,cv::Size(5,5));
+		cv::subtract(fill,lines,fill);
+		return fill;
+	} else if (mLiveType == 4) {
+		cv::blur(fill,fill,cv::Size(5,5));
+		cv::add(fill,lines,fill);
+		cv::threshold(fill,fill,255,255,CV_THRESH_TRUNC);
+		return fill;
+	}
 	return dest;
 }
 cv::Mat ocvCaptureApp::lines(cv::Mat m, cv::Mat dest, cv::Scalar col, int thick) {

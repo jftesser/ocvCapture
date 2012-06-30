@@ -199,6 +199,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\BBXMLApp.cpp" />
     <ClCompile Include="..\src\flyCap.cpp" />
     <ClCompile Include="..\src\ocvCaptureApp.cpp" />
     <ClCompile Include="..\src\ProjectorControl.cpp" />
